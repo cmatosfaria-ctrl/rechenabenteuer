@@ -233,6 +233,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:4px solid 
       <p style="font-weight:700">Womit rechnest du heute?</p>
       <div class="ranges" id="ranges"><button class="range" data-r="10">Bis 10</button><button class="range" data-r="20">Bis 20</button></div>
       <p id="levelname" class="muted"></p>
+      <button class="link" id="stagePick" style="padding:0;text-decoration:underline">Stufe wählen</button>
       <button class="btn huge" id="go">Los geht's!</button>
       <div class="row">
         <button class="btn soft" id="blitz">⚡ Blitz-Runde (1 Minute)</button>
@@ -254,6 +255,21 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:4px solid 
       <button class="link" id="parentBtn">🔒 Fortschritt</button>
     </div>
   </div>
+</section>
+
+<!-- ===== Start-Check / Stufenwahl ===== -->
+<section class="screen" id="s-testintro" hidden>
+  <div class="end">
+    <h1>Wie möchtest du starten?</h1>
+    <p style="max-width:40ch">Der Start-Check schaut mit ein paar Aufgaben, wo du anfängst. Oder du wählst deine Stufe selbst.</p>
+    <button class="btn huge" id="testGo">🎯 Start-Check</button>
+    <button class="btn soft" id="testSkip">Stufe selbst wählen</button>
+  </div>
+</section>
+<section class="screen" id="s-stage" hidden>
+  <div class="row" style="justify-content:space-between"><h1>Stufe wählen</h1><button class="btn soft" id="stageBack">Zurück</button></div>
+  <div class="worlds" id="stagelist"></div>
+  <button class="link" id="stageTest">Lieber den Start-Check machen</button>
 </section>
 
 <!-- ===== Spiel ===== -->
@@ -387,6 +403,7 @@ function normalize(o){
   p.lvByRange=p.lvByRange||{};
   for(const r in p.lvByRange){if(!RANGES[r]||!RANGES[r].includes(p.lvByRange[r]))delete p.lvByRange[r]}
   p.lvByRange[rangeOf(p.level)]=p.level;
+  if(p.tested===undefined)p.tested=Object.keys(p.days||{}).length>0;
   return p;
 }
 let ROOT=readKey(KEY2);
@@ -466,14 +483,14 @@ function say(text,force,check,done){
 }
 
 /* ---------- Bildschirme ---------- */
-const screens=["who","choose","home","play","end","parent"];
+const screens=["who","choose","testintro","stage","home","play","end","parent"];
 function show(n){screens.forEach(s=>$("s-"+s).hidden=s!==n);window.scrollTo(0,0)}
 function setWorld(){document.body.dataset.world=S.world||"dino"}
 
 function renderChoose(){
   $("worlds").innerHTML=Object.entries(WORLDS).map(([k,w])=>
     `<button class="world" data-w="${k}"><span class="big">${w.mascot}</span><b>${w.name}</b><span>${w.pick}</span></button>`).join("");
-  $("worlds").querySelectorAll(".world").forEach(b=>b.onclick=()=>{audio();S.world=b.dataset.w;save();setWorld();renderHome();show("home")});
+  $("worlds").querySelectorAll(".world").forEach(b=>b.onclick=()=>{audio();S.world=b.dataset.w;save();enter()});
 }
 
 function streak(){
@@ -551,14 +568,16 @@ function drawFrames(t){
 function showHelp(){if(!G||G.mode==="blitz")return;drawFrames(G.cur.t);$("help").hidden=false;G.cur.helped=true}
 
 function startTrain(){G={mode:"train",done:0,total:+S.len||15,firstOk:0,t0:Date.now(),retry:[],last:null};begin()}
+function startTest(){G={mode:"test",done:0,total:ORDER.length*3,ti:0,tCount:0,tOk:0,t0:Date.now(),retry:[],last:null};begin()}
 function startBlitz(){G={mode:"blitz",done:0,total:1,score:0,t0:Date.now(),retry:[],last:null};begin()}
 function begin(){
   const bl=G.mode==="blitz";
-  $("track").hidden=bl;$("timer").hidden=!bl;$("score").hidden=!bl;$("helpBtn").hidden=bl;
+  $("track").hidden=bl;$("timer").hidden=!bl;$("score").hidden=!bl;$("helpBtn").hidden=G.mode!=="train";
   $("score").textContent="0";show("play");next();
   if(bl){clearInterval(tick);tick=setInterval(()=>{const left=Math.max(0,60000-(Date.now()-G.t0));$("timerbar").style.width=(left/600)+"%";if(left<=0){clearInterval(tick);finishBlitz()}},200)}
 }
 function pickTask(){
+  if(G.mode==="test")return gen(ORDER[G.ti]);
   const i=G.retry.findIndex(r=>r.due<=G.done);if(i>=0)return G.retry.splice(i,1)[0].t;
   const L=lvList(),li=lvIdx();
   if(G.mode==="blitz")return gen(L[rnd(0,li)]);
@@ -572,10 +591,11 @@ function pickTask(){
 function next(){
   if(!G)return;
   if(G.mode==="train"&&(G.done>=G.total||Date.now()-G.t0>MAX_MS))return finishTrain();
+  if(G.mode==="test"&&G.tCount>=3){if(G.tOk>=2&&G.ti<ORDER.length-1){G.ti++;G.tCount=0;G.tOk=0}else return finishTest(ORDER[G.ti])}
   let t,n=0;do{t=pickTask();n++}while(t.key===G.last&&n<8);
   G.last=t.key;G.cur={t,tries:0,helped:false};input="";lock=false;
   $("help").hidden=true;$("msg").textContent="";$("msg").className="msg";
-  drawEq();if(G.mode==="train")drawTrack();
+  drawEq();if(G.mode!=="blitz")drawTrack();
   say(spoken(t));
 }
 function record(t,first){
@@ -597,6 +617,7 @@ function submit(){
   if(v===c.t.ans){
     lock=true;const first=c.tries===0&&!c.helped;
     if(G.mode==="train"){record(c.t,first);if(first)G.firstOk++;G.done++;drawTrack()}
+    else if(G.mode==="test"){record(c.t,first);G.tCount++;if(first)G.tOk++;G.done++;drawTrack()}
     else{G.score++;$("score").textContent=G.score}
     drawEq("good");sndOk();burst();
     $("msg").textContent=PRAISE[rnd(0,PRAISE.length-1)];$("msg").className="msg good";
@@ -606,6 +627,7 @@ function submit(){
   c.tries++;sndBad();
   $("taskcard").classList.remove("shake");void $("taskcard").offsetWidth;$("taskcard").classList.add("shake");
   if(G.mode==="blitz"){lock=true;drawEq("reveal");setTimeout(next,900);return}
+  if(G.mode==="test"){lock=true;record(c.t,false);G.tCount++;G.done++;drawEq("reveal");setTimeout(next,1500);return}
   if(c.tries===1){
     input="";drawEq();showHelp();
     $("msg").textContent="Fast! Schau dir die Punkte an und versuch es nochmal.";$("msg").className="msg bad";
@@ -633,6 +655,19 @@ function finishTrain(){
   $("endHome").onclick=()=>{renderHome();show("home")};
   G=null;show("end");sndWin();say("Super gemacht!");
 }
+function finishTest(level){
+  S.level=level;S.range=rangeOf(level);S.lvByRange[S.range]=level;S.tested=true;dayRec().ms+=Date.now()-G.t0;save();
+  $("endcard").innerHTML=`<h1>Start-Check fertig!</h1><div class="prize">🎯</div>
+    <h2>Du startest mit: ${LEVELS_DE[level]}</h2>
+    <p class="muted">Wenn es gut klappt, geht es automatisch weiter.</p>
+    <button class="btn huge" id="endHome">Los geht's</button>`;
+  $("endHome").onclick=()=>{renderHome();show("home")};G=null;show("end");sndWin();
+}
+function renderStages(){
+  $("stagelist").innerHTML=ORDER.map((l,i)=>`<button class="world" data-l="${l}" style="${l===S.level&&S.tested?"outline:4px solid var(--accent)":""}"><span class="big" style="font-size:2.4rem;font-family:var(--f-display);font-weight:800">${i+1}</span><b style="font-size:1.2rem">${LEVELS_DE[l]}</b><span>${rangeOf(l)===10?"Bis 10":"Bis 20"}${l===S.level&&S.tested?" · gerade dran":""}</span></button>`).join("");
+  $("stagelist").querySelectorAll("button").forEach(b=>b.onclick=()=>{audio();const l=+b.dataset.l;S.level=l;S.range=rangeOf(l);S.lvByRange[S.range]=l;S.tested=true;save();renderHome();show("home")});
+  $("stageBack").hidden=!S.tested;
+}
 function finishBlitz(){
   const d=dayRec();d.ms+=60000;
   const rec=G.score>S.blitzBest;if(rec)S.blitzBest=G.score;save();
@@ -646,8 +681,8 @@ function finishBlitz(){
 }
 function quit(){
   clearInterval(tick);
-  if(G&&G.mode==="train"){dayRec().ms+=Date.now()-G.t0;save()}
-  G=null;renderHome();show("home");
+  if(G&&G.mode!=="blitz"){dayRec().ms+=Date.now()-G.t0;save()}
+  const wasTest=G&&G.mode==="test";G=null;if(wasTest){show("testintro");return}renderHome();show("home");
 }
 
 /* ---------- Profile ---------- */
@@ -656,7 +691,7 @@ function renderWho(){
     return `<button data-id="${id}"><span>${w?w.mascot:"🙂"}</span>${esc(profileName(id))}</button>`}).join("");
   $("wholist").querySelectorAll("button").forEach(b=>b.onclick=()=>{audio();useProfile(b.dataset.id);enter()});
 }
-function enter(){if(S.world&&WORLDS[S.world]){setWorld();renderHome();show("home")}else{renderChoose();show("choose")}}
+function enter(){if(!S.world||!WORLDS[S.world]){renderChoose();show("choose")}else if(!S.tested){setWorld();show("testintro")}else{setWorld();renderHome();show("home")}}
 function esc(t){return String(t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function profStats(p){
   const wk=new Date();wk.setDate(wk.getDate()-6);const wkKey=dayKey(wk);let wkMs=0,last="";
@@ -721,6 +756,11 @@ function renderParent(){
 renderKeypad();
 document.querySelectorAll(".range").forEach(b=>b.onclick=()=>{audio();setRange(+b.dataset.r);renderHome()});
 $("go").onclick=()=>{audio();startTrain()};
+$("testGo").onclick=()=>{audio();startTest()};
+$("stageTest").onclick=()=>{audio();startTest()};
+$("testSkip").onclick=()=>{renderStages();show("stage")};
+$("stagePick").onclick=()=>{renderStages();show("stage")};
+$("stageBack").onclick=()=>{renderHome();show("home")};
 $("blitz").onclick=()=>{audio();startBlitz()};
 $("quit").onclick=quit;
 $("speak").onclick=()=>{if(G)say(spoken(G.cur.t),true,true)};
