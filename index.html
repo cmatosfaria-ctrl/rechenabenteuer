@@ -157,6 +157,14 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:4px solid 
 .prize{font-size:6rem;line-height:1;animation:pop .8s ease-out}
 .levelup{background:var(--good-soft);color:var(--good);border-radius:18px;padding:12px 18px;font-weight:700}
 
+.who{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px}
+.who button{border:none;border-radius:26px;padding:24px 14px;background:var(--surface);box-shadow:0 7px 0 var(--key-shadow);display:flex;flex-direction:column;align-items:center;gap:8px;font-family:var(--f-display);font-weight:800;font-size:1.5rem;min-width:0;overflow-wrap:anywhere}
+.who button span{font-size:3.6rem;line-height:1}
+.who button:active{transform:translateY(4px);box-shadow:0 3px 0 var(--key-shadow)}
+.ptable{width:100%;border-collapse:collapse;font-size:.92rem}
+.ptable th,.ptable td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.ptable tr.cur td{font-weight:700}
+.tablewrap{overflow-x:auto}
 /* Parent (French, for adults) */
 .parent{font-size:16px}
 .parent .card{background:var(--surface);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:12px;border:1px solid var(--line);min-width:0}
@@ -199,6 +207,12 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:4px solid 
   <div class="worlds" id="worlds"></div>
 </section>
 
+<!-- ===== Profilwahl ===== -->
+<section class="screen" id="s-who" hidden>
+  <h1>Wer übt heute?</h1>
+  <div class="who" id="wholist"></div>
+</section>
+
 <!-- ===== Start ===== -->
 <section class="screen" id="s-home" hidden>
   <div class="home-top">
@@ -233,8 +247,9 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:4px solid 
     </div>
     <p class="muted" id="voiceNote" hidden style="flex-basis:100%"></p>
     <div class="row">
+      <button class="link" id="whoBtn" hidden>Profil wechseln</button>
       <button class="link" id="switch">Welt wechseln</button>
-      <button class="link" id="parentBtn">Eltern</button>
+      <button class="link" id="parentBtn">🔒 Fortschritt</button>
     </div>
   </div>
 </section>
@@ -272,12 +287,18 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:4px solid 
 <!-- ===== Espace parents ===== -->
 <section class="screen parent" id="s-parent" hidden>
   <div class="row" style="justify-content:space-between">
-    <h1>Espace parents</h1>
+    <div><h1>Fortschritt</h1><p class="muted">Suivi réservé aux parents et enseignants</p></div>
     <button class="btn soft" id="pBack">Retour</button>
   </div>
   <div class="card">
     <div class="kpis" id="kpis"></div>
     <p class="muted" id="storageNote"></p>
+  </div>
+  <div class="card">
+    <h3>Profils</h3>
+    <div class="tablewrap"><table class="ptable" id="ptable"></table></div>
+    <div class="row"><input id="newName" maxlength="20" placeholder="Prénom du nouvel enfant" aria-label="Prénom du nouvel enfant"><button class="btn soft" id="addProf">Ajouter un profil</button></div>
+    <p class="muted">Chaque enfant a sa progression, son univers et ses réglages. Les statistiques ci-dessous concernent le profil sélectionné (en gras).</p>
   </div>
   <div class="pgrid">
     <div class="card">
@@ -301,7 +322,8 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:4px solid 
       <label>Niveau actuel<select id="pLevel"></select></label>
       <label>Calculs par séance<select id="pLen"><option value="10">10 (environ 5 min)</option><option value="15">15 (environ 7 min)</option><option value="20">20 (environ 10 min)</option></select></label>
       <div class="row">
-        <button class="danger" id="pReset">Tout remettre à zéro</button>
+        <button class="btn soft" id="pPin">Changer le code</button>
+        <button class="danger" id="pReset">Remettre ce profil à zéro</button>
         <span id="pResetConfirm" hidden class="row"><span>Sûr ?</span><button class="danger" id="pResetYes">Oui, effacer</button><button class="btn soft" id="pResetNo">Non</button></span>
       </div>
     </div>
@@ -310,10 +332,10 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:4px solid 
 
 <div class="modal" id="gate" hidden>
   <div class="card">
-    <h3 style="font-family:var(--f-body)">Espace parents</h3>
+    <h3>🔒 Fortschritt</h3>
     <p id="gateQ"></p>
-    <input id="gateIn" inputmode="numeric" autocomplete="off">
-    <div class="row"><button class="btn soft" id="gateOk">Entrer</button><button class="link" id="gateNo">Annuler</button></div>
+    <input id="gateIn" type="password" inputmode="numeric" autocomplete="off" aria-label="Code">
+    <div class="row"><button class="btn soft" id="gateOk">Entrer</button><button class="link" id="gateNo">Annuler</button><button class="link" id="gateForgot">Code oublié ?</button></div>
   </div>
 </div>
 
@@ -351,20 +373,34 @@ const LEVELS_DE=["","Plus bis 5","Plus bis 10","Minus bis 10","Verliebte Zahlen 
 const LEVELS_FR=["","Additions jusqu'à 5","Additions jusqu'à 10","Soustractions jusqu'à 10","Compléments à 10 (« verliebte Zahlen »)","Additions jusqu'à 20 sans passage de dizaine","Soustractions jusqu'à 20 sans passage de dizaine","Additions avec passage de la dizaine","Soustractions avec passage de la dizaine","Tout mélangé jusqu'à 20","Soustractions jusqu'à 5","+ et − mélangés jusqu'à 10","+ et − jusqu'à 10 avec compléments à 10","+ et − jusqu'à 20 sans passage de dizaine","+ et − avec passage de la dizaine"];
 
 const DEF={name:"",world:null,stations:{dino:0,pirate:0,space:0,pet:0},level:11,range:10,lvByRange:{},hist:{},facts:{},days:{},blitzBest:0,sound:true,voice:false,len:15};
+const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
 let storageOk=true;
-function load(){try{const s=localStorage.getItem(KEY);return s?JSON.parse(s):null}catch(e){storageOk=false;return null}}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){storageOk=false}}
-let S=Object.assign(JSON.parse(JSON.stringify(DEF)),load()||{});
-S.stations=Object.assign({dino:0,pirate:0,space:0,pet:0},S.stations);
-if(MIGRATE[S.level])S.level=MIGRATE[S.level];
-if(!RANGES[S.range]||!RANGES[S.range].includes(S.level))S.range=rangeOf(S.level);
-S.lvByRange=S.lvByRange||{};
-for(const r in S.lvByRange){if(!RANGES[r]||!RANGES[r].includes(S.lvByRange[r]))delete S.lvByRange[r]}S.lvByRange[rangeOf(S.level)]=S.level;
+const KEY2="rechenabenteuer-v2";
+function readKey(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch(e){storageOk=false;return null}}
+function normalize(o){
+  const p=Object.assign(JSON.parse(JSON.stringify(DEF)),o||{});
+  p.stations=Object.assign({dino:0,pirate:0,space:0,pet:0},p.stations);
+  if(MIGRATE[p.level])p.level=MIGRATE[p.level];
+  if(!RANGES[p.range]||!RANGES[p.range].includes(p.level))p.range=rangeOf(p.level);
+  p.lvByRange=p.lvByRange||{};
+  for(const r in p.lvByRange){if(!RANGES[r]||!RANGES[r].includes(p.lvByRange[r]))delete p.lvByRange[r]}
+  p.lvByRange[rangeOf(p.level)]=p.level;
+  return p;
+}
+let ROOT=readKey(KEY2);
+if(!ROOT||!ROOT.profiles){ROOT={profiles:{},order:[],cur:null};const old=readKey(KEY);if(old){ROOT.profiles.p1=old;ROOT.order=["p1"];ROOT.cur="p1"}}
+let S=null;
+function save(){if(ROOT.cur&&S)ROOT.profiles[ROOT.cur]=S;try{localStorage.setItem(KEY2,JSON.stringify(ROOT))}catch(e){storageOk=false}}
+function useProfile(id){ROOT.cur=id;S=normalize(ROOT.profiles[id]);save()}
+function addProfile(name){const id="p"+Date.now().toString(36)+rnd(10,99);ROOT.profiles[id]=normalize({name:name||""});ROOT.order.push(id);return id}
+function profileName(id){return (ROOT.profiles[id]&&ROOT.profiles[id].name)||"Kind "+(ROOT.order.indexOf(id)+1)}
+if(!ROOT.order.length){ROOT.cur=addProfile("")}
+if(!ROOT.profiles[ROOT.cur])ROOT.cur=ROOT.order[0];
+useProfile(ROOT.cur);
 const lvList=()=>RANGES[S.range];
 const lvIdx=()=>Math.max(0,lvList().indexOf(S.level));
 function setRange(r){S.range=r;S.level=S.lvByRange[r]||RANGES[r][0];S.lvByRange[r]=S.level;save()}
 
-const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
 function dayKey(d){d=d||new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
 function dayRec(){const k=dayKey();return S.days[k]||(S.days[k]={n:0,ok:0,ms:0,s:0})}
 
@@ -387,6 +423,7 @@ function gen(level){
   const ans=miss?b:(op==="+"?a+b:a-b);
   return {a,b,op,miss,ans,level,key:a+op+b+(miss?"?":"")};
 }
+function spokenFull(t){return t.miss?t.a+" plus "+t.ans+" gleich 10":spoken(t)+" gleich "+t.ans}
 function spoken(t){
   if(t.miss)return t.a+" plus wie viel gleich 10?";
   return t.a+(t.op==="+"?" plus ":" minus ")+t.b;
@@ -424,7 +461,7 @@ function say(text,force,check){
 }
 
 /* ---------- Bildschirme ---------- */
-const screens=["choose","home","play","end","parent"];
+const screens=["who","choose","home","play","end","parent"];
 function show(n){screens.forEach(s=>$("s-"+s).hidden=s!==n);window.scrollTo(0,0)}
 function setWorld(){document.body.dataset.world=S.world||"dino"}
 
@@ -446,6 +483,7 @@ function itemHTML(w,i,cls){
 }
 function renderHome(){
   const w=WORLDS[S.world];setWorld();
+  $("whoBtn").hidden=ROOT.order.length<2;
   $("hello").textContent=S.name?"Hallo "+S.name+"!":"Hallo!";
   $("worldname").textContent=w.name;
   const st=streak();$("streak").textContent=st>0?"🔥 "+st+(st===1?" Tag":" Tage")+" am Stück":"🔥 Starte deine Serie!";
@@ -557,7 +595,8 @@ function submit(){
     else{G.score++;$("score").textContent=G.score}
     drawEq("good");sndOk();burst();
     $("msg").textContent=PRAISE[rnd(0,PRAISE.length-1)];$("msg").className="msg good";
-    setTimeout(next,G.mode==="blitz"?350:750);return;
+    const talk=S.voice&&G.mode!=="blitz";if(talk)say(spokenFull(c.t));
+    setTimeout(next,G.mode==="blitz"?350:talk?2300:750);return;
   }
   c.tries++;sndBad();
   $("taskcard").classList.remove("shake");void $("taskcard").offsetWidth;$("taskcard").classList.add("shake");
@@ -568,7 +607,7 @@ function submit(){
   }else{
     lock=true;record(c.t,false);G.retry.push({t:c.t,due:G.done+3});G.done++;drawTrack();
     drawEq("reveal");$("msg").textContent="Das Ergebnis ist "+c.t.ans+". Die Aufgabe kommt gleich nochmal.";$("msg").className="msg";
-    say(spoken(c.t)+" gleich "+c.t.ans);
+    say(spokenFull(c.t));
     setTimeout(next,2800);
   }
 }
@@ -607,9 +646,45 @@ function quit(){
   G=null;renderHome();show("home");
 }
 
+/* ---------- Profile ---------- */
+function renderWho(){
+  $("wholist").innerHTML=ROOT.order.map(id=>{const p=ROOT.profiles[id];const w=WORLDS[p.world];
+    return `<button data-id="${id}"><span>${w?w.mascot:"🙂"}</span>${esc(profileName(id))}</button>`}).join("");
+  $("wholist").querySelectorAll("button").forEach(b=>b.onclick=()=>{audio();useProfile(b.dataset.id);enter()});
+}
+function enter(){if(S.world&&WORLDS[S.world]){setWorld();renderHome();show("home")}else{renderChoose();show("choose")}}
+function esc(t){return String(t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function profStats(p){
+  const wk=new Date();wk.setDate(wk.getDate()-6);const wkKey=dayKey(wk);let wkMs=0,last="";
+  Object.keys(p.days||{}).forEach(k=>{const d=p.days[k];if(k>=wkKey)wkMs+=d.ms;if(d.s&&k>last)last=k});
+  return {wkMin:Math.round(wkMs/60000),last};
+}
+function renderProfiles(){
+  const rows=ROOT.order.map(id=>{const p=ROOT.profiles[id];const st=profStats(p);const cur=id===ROOT.cur;
+    return `<tr class="${cur?"cur":""}"><td>${esc(profileName(id))}</td><td>${st.wkMin} min / 7 j</td><td>${st.last?st.last.split("-").reverse().join("."):"–"}</td><td>${LEVELS_FR[p.level]||""}</td>
+      <td class="row" style="gap:6px">${cur?"":`<button class="btn soft" data-open="${id}">Voir</button>`}${ROOT.order.length>1?`<button class="link" data-del="${id}">Supprimer</button><span hidden data-conf="${id}"><button class="danger" data-delyes="${id}">Confirmer</button></span>`:""}</td></tr>`}).join("");
+  $("ptable").innerHTML=`<tr><th>Enfant</th><th>Temps</th><th>Dernière séance</th><th>Niveau</th><th></th></tr>`+rows;
+  $("ptable").querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>{useProfile(b.dataset.open);renderParent()});
+  $("ptable").querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{b.hidden=true;$("ptable").querySelector(`[data-conf="${b.dataset.del}"]`).hidden=false});
+  $("ptable").querySelectorAll("[data-delyes]").forEach(b=>b.onclick=()=>{const id=b.dataset.delyes;delete ROOT.profiles[id];ROOT.order=ROOT.order.filter(x=>x!==id);
+    if(ROOT.cur===id){ROOT.cur=null;S=null;useProfile(ROOT.order[0])}else save();renderParent()});
+}
+
 /* ---------- Eltern ---------- */
-let gateAns=0;
-function openGate(){const a=rnd(6,9),b=rnd(6,9);gateAns=a*b;$("gateQ").textContent="Pour entrer : combien font "+a+" × "+b+" ?";$("gateIn").value="";$("gate").hidden=false;$("gateIn").focus()}
+let gateAns=0,gateMode="enter",gateTmp="";
+async function pinHash(v){try{const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("rechnen-pin|"+v));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}catch(e){return "plain:"+v}}
+function gateSet(mode,q){gateMode=mode;$("gateQ").textContent=q;const pin=mode!=="recover";$("gateIn").type=pin?"password":"text";$("gateIn").maxLength=pin?4:8;$("gateIn").value="";$("gateForgot").hidden=mode!=="enter";$("gate").hidden=false;$("gateIn").focus()}
+function openGate(){if(ROOT.pin)gateSet("enter","Entrez le code à 4 chiffres.");else gateSet("set1","Première visite : choisissez un code à 4 chiffres. Il protégera cet espace sur cet appareil.")}
+function enterParent(){$("gate").hidden=true;renderParent();show("parent")}
+async function tryGate(){
+  const v=$("gateIn").value.trim();
+  if(gateMode==="enter"){if(ROOT.pin&&await pinHash(v)===ROOT.pin)enterParent();else gateSet("enter","Code incorrect. Réessayez.");return}
+  if(gateMode==="set1"){if(!/^\d{4}$/.test(v)){gateSet("set1","Le code doit faire exactement 4 chiffres.");return}gateTmp=v;gateSet("set2","Tapez le code une deuxième fois pour confirmer.");return}
+  if(gateMode==="set2"){if(v!==gateTmp){gateSet("set1","Les deux codes ne correspondent pas. Choisissez un code à 4 chiffres :");return}ROOT.pin=await pinHash(v);save();enterParent();return}
+  if(gateMode==="recover"){if(parseInt(v,10)===gateAns){ROOT.pin=null;save();gateSet("set1","Ancien code effacé. Choisissez un nouveau code à 4 chiffres :")}else gateSet("enter","Réponse incorrecte. Entrez le code à 4 chiffres.");return}
+}
+function forgotGate(){const a=rnd(214,689),b=rnd(23,48);gateAns=a*b;gateSet("recover","Code oublié ? Pour le remplacer, calculez "+a+" × "+b+" (papier autorisé).")}
+
 function renderParent(){
   const keys=Object.keys(S.days).sort();let ms=0,n=0,ok=0,sess=0;
   const wk=new Date();wk.setDate(wk.getDate()-6);const wkKey=dayKey(wk);let wkMs=0;
@@ -631,6 +706,7 @@ function renderParent(){
   const weak=Object.values(S.facts).filter(f=>f.wrong>0).sort((a,b)=>(b.wrong-b.box)-(a.wrong-a.box)).slice(0,12);
   $("weak").innerHTML=weak.length?weak.map(f=>{const t=f.t;const txt=t.miss?`${t.a} + ? = 10`:`${t.a} ${t.op==="+"?"+":"−"} ${t.b}`;
     return `<span title="${f.wrong} erreur(s)">${txt} = ${t.ans} · ${f.wrong}×</span>`}).join(""):`<span class="muted" style="background:none">Rien pour l'instant.</span>`;
+  renderProfiles();
   $("pName").value=S.name;
   $("pLevel").innerHTML=ORDER.map(l=>`<option value="${l}" ${l===S.level?"selected":""}>0-${rangeOf(l)} : ${LEVELS_FR[l]}</option>`).join("");
   $("pLen").value=String(S.len);
@@ -649,17 +725,20 @@ $("switch").onclick=()=>{renderChoose();show("choose")};
 $("tSound").onclick=()=>{S.sound=!S.sound;save();renderHome();sndOk()};
 $("tVoice").onclick=()=>{S.voice=!S.voice;save();if(S.voice)say("Ich lese dir die Aufgaben vor.",true,true);else voiceNote("");renderHome()};
 $("parentBtn").onclick=openGate;
+$("whoBtn").onclick=()=>{renderWho();show("who")};
+$("addProf").onclick=()=>{const n=$("newName").value.trim();if(!n){$("newName").focus();return}const id=addProfile(n);$("newName").value="";useProfile(id);renderParent()};
 $("gateNo").onclick=()=>$("gate").hidden=true;
-function tryGate(){if(parseInt($("gateIn").value,10)===gateAns){$("gate").hidden=true;renderParent();show("parent")}else{$("gateIn").value="";$("gateQ").textContent+=" (réessayer)"}}
 $("gateOk").onclick=tryGate;
+$("gateForgot").onclick=forgotGate;
+$("pPin").onclick=()=>gateSet("set1","Choisissez le nouveau code à 4 chiffres :");
 $("gateIn").addEventListener("keydown",e=>{if(e.key==="Enter")tryGate()});
-$("pBack").onclick=()=>{renderHome();show("home")};
-$("pName").onchange=e=>{S.name=e.target.value.trim();save()};
+$("pBack").onclick=()=>{if(ROOT.order.length>1){renderWho();show("who")}else enter()};
+$("pName").onchange=e=>{S.name=e.target.value.trim();save();renderProfiles()};
 $("pLevel").onchange=e=>{S.level=+e.target.value;S.range=rangeOf(S.level);S.lvByRange[S.range]=S.level;save();renderParent()};
 $("pLen").onchange=e=>{S.len=+e.target.value;save()};
 $("pReset").onclick=()=>{$("pReset").hidden=true;$("pResetConfirm").hidden=false};
 $("pResetNo").onclick=()=>{$("pReset").hidden=false;$("pResetConfirm").hidden=true};
-$("pResetYes").onclick=()=>{const keep={name:S.name,sound:S.sound,voice:S.voice,len:S.len};S=Object.assign(JSON.parse(JSON.stringify(DEF)),keep);save();renderChoose();show("choose")};
+$("pResetYes").onclick=()=>{const keep={name:S.name,sound:S.sound,voice:S.voice,len:S.len};S=normalize(keep);save();renderChoose();show("choose")};
 document.addEventListener("keydown",e=>{
   if(!G||$("s-play").hidden)return;
   if(/^[0-9]$/.test(e.key))press(e.key);
@@ -667,7 +746,7 @@ document.addEventListener("keydown",e=>{
   else if(e.key==="Enter")press("ok");
 });
 
-if(S.world&&WORLDS[S.world]){setWorld();renderHome();show("home")}else{renderChoose();show("choose")}
+if(ROOT.order.length>1){renderWho();show("who")}else enter();
 })();
 </script>
 
