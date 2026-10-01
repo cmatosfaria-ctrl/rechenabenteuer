@@ -211,6 +211,8 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:4px solid 
 <section class="screen" id="s-who" hidden>
   <h1>Wer übt heute?</h1>
   <div class="who" id="wholist"></div>
+  <div class="row"><input id="whoName" maxlength="20" placeholder="Name" aria-label="Name des neuen Profils" style="font:inherit;font-size:1.2rem;padding:12px 14px;border-radius:14px;border:2px solid var(--line);background:var(--surface);color:var(--ink);max-width:100%"><button class="btn" id="whoAdd">+ Neues Profil</button></div>
+  <p class="muted" id="whoHint" hidden>Bitte zuerst einen Namen eingeben.</p>
 </section>
 
 <!-- ===== Start ===== -->
@@ -247,7 +249,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:4px solid 
     </div>
     <p class="muted" id="voiceNote" hidden style="flex-basis:100%"></p>
     <div class="row">
-      <button class="link" id="whoBtn" hidden>Profil wechseln</button>
+      <button class="link" id="whoBtn">👤 Profile</button>
       <button class="link" id="switch">Welt wechseln</button>
       <button class="link" id="parentBtn">🔒 Fortschritt</button>
     </div>
@@ -446,15 +448,18 @@ function pickVoice(){if(!("speechSynthesis" in window))return;const v=speechSynt
 if("speechSynthesis" in window){pickVoice();speechSynthesis.onvoiceschanged=pickVoice}
 const hasTTS=("speechSynthesis" in window)&&("SpeechSynthesisUtterance" in window);
 function voiceNote(txt){const n=$("voiceNote");if(n){n.textContent=txt||"";n.hidden=!txt}}
-function say(text,force,check){
+function say(text,force,check,done){
+  let fired=false;const fin=()=>{if(!fired){fired=true;if(done)done()}};
+  if(!(S.voice||force)||!hasTTS){setTimeout(fin,0)}
   if(!(S.voice||force))return;
+  setTimeout(fin,Math.min(9000,1800+text.length*130));
   if(!hasTTS){voiceNote("Vorlesen geht in diesem Browser nicht. Öffne die Seite direkt in Safari oder Chrome.");return}
   try{
     if(speechSynthesis.speaking||speechSynthesis.pending)speechSynthesis.cancel();
     if(!deVoice)pickVoice();
     const u=new SpeechSynthesisUtterance(text);u.lang="de-DE";if(deVoice)u.voice=deVoice;u.rate=.85;u.volume=1;
     let started=false;u.onstart=()=>{started=true;voiceNote("")};
-    u.onerror=e=>{if(e.error!=="interrupted"&&e.error!=="canceled")voiceNote("Vorlesen blockiert ("+e.error+"). Stummschalter am Gerät prüfen oder Seite in Safari/Chrome öffnen.")};
+    u.onend=fin;u.onerror=e=>{fin();if(e.error!=="interrupted"&&e.error!=="canceled")voiceNote("Vorlesen blockiert ("+e.error+"). Stummschalter am Gerät prüfen oder Seite in Safari/Chrome öffnen.")};
     speechSynthesis.resume();speechSynthesis.speak(u);
     if(check)setTimeout(()=>{if(!started)voiceNote("Keine Stimme zu hören? Stummschalter und Lautstärke prüfen. Auf dem iPhone/iPad: Einstellungen › Bedienungshilfen › Gesprochene Inhalte › Stimmen › Deutsch laden.")},2500);
   }catch(e){voiceNote("Vorlesen geht in diesem Browser nicht.")}
@@ -483,7 +488,6 @@ function itemHTML(w,i,cls){
 }
 function renderHome(){
   const w=WORLDS[S.world];setWorld();
-  $("whoBtn").hidden=ROOT.order.length<2;
   $("hello").textContent=S.name?"Hallo "+S.name+"!":"Hallo!";
   $("worldname").textContent=w.name;
   const st=streak();$("streak").textContent=st>0?"🔥 "+st+(st===1?" Tag":" Tage")+" am Stück":"🔥 Starte deine Serie!";
@@ -566,6 +570,7 @@ function pickTask(){
   return gen(S.level);
 }
 function next(){
+  if(!G)return;
   if(G.mode==="train"&&(G.done>=G.total||Date.now()-G.t0>MAX_MS))return finishTrain();
   let t,n=0;do{t=pickTask();n++}while(t.key===G.last&&n<8);
   G.last=t.key;G.cur={t,tries:0,helped:false};input="";lock=false;
@@ -595,8 +600,8 @@ function submit(){
     else{G.score++;$("score").textContent=G.score}
     drawEq("good");sndOk();burst();
     $("msg").textContent=PRAISE[rnd(0,PRAISE.length-1)];$("msg").className="msg good";
-    const talk=S.voice&&G.mode!=="blitz";if(talk)say(spokenFull(c.t));
-    setTimeout(next,G.mode==="blitz"?350:talk?2300:750);return;
+    const talk=S.voice&&G.mode!=="blitz";const g=G;
+    if(talk)say(spokenFull(c.t),false,false,()=>setTimeout(()=>{if(G===g)next()},400));else setTimeout(next,G.mode==="blitz"?350:750);return;
   }
   c.tries++;sndBad();
   $("taskcard").classList.remove("shake");void $("taskcard").offsetWidth;$("taskcard").classList.add("shake");
@@ -607,8 +612,7 @@ function submit(){
   }else{
     lock=true;record(c.t,false);G.retry.push({t:c.t,due:G.done+3});G.done++;drawTrack();
     drawEq("reveal");$("msg").textContent="Das Ergebnis ist "+c.t.ans+". Die Aufgabe kommt gleich nochmal.";$("msg").className="msg";
-    say(spokenFull(c.t));
-    setTimeout(next,2800);
+    const g=G;if(S.voice)say(spokenFull(c.t),false,false,()=>setTimeout(()=>{if(G===g)next()},800));else setTimeout(next,2800);
   }
 }
 function finishTrain(){
@@ -726,6 +730,7 @@ $("tSound").onclick=()=>{S.sound=!S.sound;save();renderHome();sndOk()};
 $("tVoice").onclick=()=>{S.voice=!S.voice;save();if(S.voice)say("Ich lese dir die Aufgaben vor.",true,true);else voiceNote("");renderHome()};
 $("parentBtn").onclick=openGate;
 $("whoBtn").onclick=()=>{renderWho();show("who")};
+$("whoAdd").onclick=()=>{const n=$("whoName").value.trim();$("whoHint").hidden=!!n;if(!n){$("whoName").focus();return}const id=addProfile(n);$("whoName").value="";audio();useProfile(id);enter()};
 $("addProf").onclick=()=>{const n=$("newName").value.trim();if(!n){$("newName").focus();return}const id=addProfile(n);$("newName").value="";useProfile(id);renderParent()};
 $("gateNo").onclick=()=>$("gate").hidden=true;
 $("gateOk").onclick=tryGate;
