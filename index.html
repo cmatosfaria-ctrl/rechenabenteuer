@@ -103,6 +103,10 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:4px solid 
 .item.locked .ic{filter:grayscale(1) brightness(.3);opacity:.22}
 .item.fresh{border-color:var(--accent);animation:pop .6s ease-out}
 .toggles{display:flex;flex-wrap:wrap;gap:10px}
+.ranges{display:flex;flex-wrap:wrap;gap:10px}
+.range{border:3px solid var(--line);background:var(--surface);color:var(--ink);border-radius:18px;padding:10px 20px;font-family:var(--f-display);font-weight:800;font-size:1.4rem;box-shadow:0 5px 0 var(--key-shadow)}
+.range[aria-pressed="true"]{border-color:var(--accent);background:var(--accent);color:var(--on-accent);box-shadow:0 5px 0 var(--accent-deep)}
+.range:active{transform:translateY(3px)}
 
 /* Play */
 .play-head{display:flex;gap:12px;align-items:center}
@@ -210,7 +214,9 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:4px solid 
   <div class="hero">
     <div class="mascot" id="mascot"></div>
     <div class="actions">
-      <p id="levelname" style="font-weight:700"></p>
+      <p style="font-weight:700">Womit rechnest du heute?</p>
+      <div class="ranges" id="ranges"><button class="range" data-r="10">Bis 10</button><button class="range" data-r="20">Bis 20</button></div>
+      <p id="levelname" class="muted"></p>
       <button class="btn huge" id="go">Los geht's!</button>
       <div class="row">
         <button class="btn soft" id="blitz">⚡ Blitz-Runde (1 Minute)</button>
@@ -246,7 +252,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:4px solid 
     <div class="task" id="taskcard">
       <div class="eq" id="eq"></div>
       <p class="msg" id="msg"></p>
-      <div id="help" hidden>
+      <div id="help" hidden style="width:100%">
         <div class="frames" id="frames"></div>
         <p class="help-note" id="helpnote"></p>
       </div>
@@ -282,7 +288,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:4px solid 
     <div class="card">
       <h3>Niveaux</h3>
       <div id="levels" style="display:flex;flex-direction:column;gap:8px"></div>
-      <p class="muted">Réussite du premier coup, sans aide, sur les 20 derniers calculs du niveau. Passage au niveau suivant à 17 sur 20.</p>
+      <p class="muted">Réussite du premier coup, sans aide, sur les 20 derniers calculs du niveau. Leo choisit la plage (0-10 ou 0-20) à chaque séance ; à l'intérieur, passage au niveau suivant à 17 sur 20.</p>
     </div>
     <div class="card">
       <h3>Calculs qui coincent</h3>
@@ -336,15 +342,27 @@ const WORLDS={
     items:[["⚽","Ball"],["🎀","Schleife"],["🦴","Knochen"],["🥏","Frisbee"],["🏠","Hundehütte"],["🧸","Kuscheltier"],
            ["🧢","Mütze"],["🧣","Schal"],["🕶️","Sonnenbrille"],["🛁","Badewanne"],["🏆","Pokal"],["👑","Krone"]]}
 };
-const LEVELS_DE=["","Plus bis 5","Plus bis 10","Minus bis 10","Verliebte Zahlen (bis 10)","Plus bis 20, ohne Übergang","Minus bis 20, ohne Übergang","Plus über die 10","Minus über die 10","Alles bis 20"];
-const LEVELS_FR=["","Additions jusqu'à 5","Additions jusqu'à 10","Soustractions jusqu'à 10","Compléments à 10 (« verliebte Zahlen »)","Additions jusqu'à 20 sans passage de dizaine","Soustractions jusqu'à 20 sans passage de dizaine","Additions avec passage de la dizaine","Soustractions avec passage de la dizaine","Tout mélangé jusqu'à 20"];
+const RANGES={10:[11,12],20:[13,14,9]};
+const ORDER=[11,12,13,14,9];
+const MIX={11:[2,3],12:[2,3,4,2,3],13:[5,6],14:[7,8],9:[5,6,7,8,7,8]};
+const MIGRATE={1:11,2:11,3:11,10:11,4:12,5:13,6:13,7:14,8:14};
+const rangeOf=l=>[2,3,4,10,11,12].includes(l)?10:20;
+const LEVELS_DE=["","Plus bis 5","Plus bis 10","Minus bis 10","Verliebte Zahlen (bis 10)","Plus bis 20, ohne Übergang","Minus bis 20, ohne Übergang","Plus über die 10","Minus über die 10","Alles bis 20","Minus bis 5","Plus und Minus bis 10","Plus, Minus und verliebte Zahlen","Plus und Minus bis 20, ohne Übergang","Plus und Minus über die 10"];
+const LEVELS_FR=["","Additions jusqu'à 5","Additions jusqu'à 10","Soustractions jusqu'à 10","Compléments à 10 (« verliebte Zahlen »)","Additions jusqu'à 20 sans passage de dizaine","Soustractions jusqu'à 20 sans passage de dizaine","Additions avec passage de la dizaine","Soustractions avec passage de la dizaine","Tout mélangé jusqu'à 20","Soustractions jusqu'à 5","+ et − mélangés jusqu'à 10","+ et − jusqu'à 10 avec compléments à 10","+ et − jusqu'à 20 sans passage de dizaine","+ et − avec passage de la dizaine"];
 
-const DEF={name:"",world:null,stations:{dino:0,pirate:0,space:0,pet:0},level:1,hist:{},facts:{},days:{},blitzBest:0,sound:true,voice:false,len:15};
+const DEF={name:"",world:null,stations:{dino:0,pirate:0,space:0,pet:0},level:11,range:10,lvByRange:{},hist:{},facts:{},days:{},blitzBest:0,sound:true,voice:false,len:15};
 let storageOk=true;
 function load(){try{const s=localStorage.getItem(KEY);return s?JSON.parse(s):null}catch(e){storageOk=false;return null}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){storageOk=false}}
 let S=Object.assign(JSON.parse(JSON.stringify(DEF)),load()||{});
 S.stations=Object.assign({dino:0,pirate:0,space:0,pet:0},S.stations);
+if(MIGRATE[S.level])S.level=MIGRATE[S.level];
+if(!RANGES[S.range]||!RANGES[S.range].includes(S.level))S.range=rangeOf(S.level);
+S.lvByRange=S.lvByRange||{};
+for(const r in S.lvByRange){if(!RANGES[r]||!RANGES[r].includes(S.lvByRange[r]))delete S.lvByRange[r]}S.lvByRange[rangeOf(S.level)]=S.level;
+const lvList=()=>RANGES[S.range];
+const lvIdx=()=>Math.max(0,lvList().indexOf(S.level));
+function setRange(r){S.range=r;S.level=S.lvByRange[r]||RANGES[r][0];S.lvByRange[r]=S.level;save()}
 
 const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
 function dayKey(d){d=d||new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
@@ -362,7 +380,9 @@ function gen(level){
     case 6:{const u=rnd(1,9);a=10+u;b=Math.random()<.2?10:rnd(1,u);op="-";break}
     case 7:a=rnd(2,9);b=rnd(11-a,9);break;
     case 8:a=rnd(11,18);b=rnd(a-9,9);op="-";break;
-    default:{const t=gen([2,3,5,6,7,8,7,8][rnd(0,7)]);t.level=9;return t}
+    case 10:a=rnd(2,5);b=rnd(1,a);op="-";break;
+    case 9:case 11:case 12:case 13:case 14:{const m=MIX[level];const t=gen(m[rnd(0,m.length-1)]);t.level=level;return t}
+    default:return gen(1);
   }
   const ans=miss?b:(op==="+"?a+b:a-b);
   return {a,b,op,miss,ans,level,key:a+op+b+(miss?"?":"")};
@@ -432,7 +452,8 @@ function renderHome(){
   const td=S.days[dayKey()];const done=td&&td.s>0;
   $("today").textContent=done?"✓ Heute geschafft":"Heute noch nicht geübt";$("today").classList.toggle("on",done);
   $("go").textContent=done?"Noch eine Runde!":"Los geht's!";
-  $("levelname").textContent="Stufe "+S.level+": "+LEVELS_DE[S.level];
+  $("levelname").textContent="Gerade dran: "+LEVELS_DE[S.level];
+  document.querySelectorAll(".range").forEach(b=>b.setAttribute("aria-pressed",String(+b.dataset.r===S.range)));
   const idx=S.stations[S.world];
   $("mascot").textContent=w.mascot;
   $("mascot").style.transform=S.world==="pet"?`scale(${1+Math.min(idx,12)*.04})`:"";
@@ -497,11 +518,13 @@ function begin(){
 }
 function pickTask(){
   const i=G.retry.findIndex(r=>r.due<=G.done);if(i>=0)return G.retry.splice(i,1)[0].t;
-  if(G.mode==="blitz")return gen(rnd(Math.max(1,S.level-2),S.level));
+  const L=lvList(),li=lvIdx();
+  if(G.mode==="blitz")return gen(L[rnd(0,li)]);
   const r=Math.random();
-  const weak=Object.values(S.facts).filter(f=>f.wrong>0&&f.box<2&&f.t.level<=S.level);
+  const weak=Object.values(S.facts).filter(f=>f.wrong>0&&f.box<2&&L.slice(0,li+1).includes(f.t.level));
   if(weak.length&&r<.15)return Object.assign({},weak[rnd(0,weak.length-1)].t);
-  if(S.level>1&&r<.4)return gen(Math.random()<.6?S.level-1:rnd(1,S.level-1));
+  if(li>0&&r<.4)return gen(Math.random()<.6?L[li-1]:L[rnd(0,li-1)]);
+  if(li===L.length-1&&li>0&&r<.6)return gen(L[rnd(0,li-1)]);
   return gen(S.level);
 }
 function next(){
@@ -552,7 +575,7 @@ function submit(){
 function finishTrain(){
   const d=dayRec();d.ms+=Date.now()-G.t0;d.s++;
   let levelUp=false;const h=S.hist[S.level]||[];
-  if(S.level<9&&h.length>=20&&h.reduce((a,b)=>a+b,0)>=17){S.level++;levelUp=true}
+  if(lvIdx()<lvList().length-1&&h.length>=20&&h.reduce((a,b)=>a+b,0)>=17){S.level=lvList()[lvIdx()+1];S.lvByRange[S.range]=S.level;levelUp=true}
   const w=WORLDS[S.world];const idx=S.stations[S.world];const it=w.items[idx%12];S.stations[S.world]=idx+1;save();justWon=true;
   const ratio=G.firstOk/G.total;const stars=ratio>=.8?3:ratio>=.5?2:1;
   const hue=it[2]?`style="filter:hue-rotate(${it[2]}deg)"`:"";
@@ -595,27 +618,28 @@ function renderParent(){
     <div><b>${Math.round(wkMs/60000)} min</b><span class="muted">sur 7 jours</span></div>
     <div><b>${sess}</b><span class="muted">séances terminées</span></div>
     <div><b>${n?Math.round(ok/n*100):0} %</b><span class="muted">réussi du 1er coup (${n} calculs)</span></div>
-    <div><b>${S.level}/9</b><span class="muted">niveau actuel</span></div>`;
+    <div><b>0-${S.range}</b><span class="muted">plage choisie</span></div>`;
   $("storageNote").textContent=storageOk?"Les progrès sont enregistrés dans ce navigateur, sur cet appareil uniquement.":"Attention : ce navigateur bloque l'enregistrement. Les progrès seront perdus à la fermeture.";
   let cal="";const start=new Date();start.setDate(start.getDate()-27);
   for(let i=0;i<28;i++){const d=new Date(start);d.setDate(start.getDate()+i);const k=dayKey(d);const r=S.days[k];
     const min=r?Math.round(r.ms/60000):0;
     cal+=`<div class="${r&&r.s?"on":""} ${k===dayKey()?"today":""}" title="${k} : ${min} min">${d.getDate()}</div>`}
   $("cal").innerHTML=cal;
-  let lv="";for(let l=1;l<=9;l++){const h=S.hist[l]||[];const p=h.length?Math.round(h.reduce((a,b)=>a+b,0)/h.length*100):null;
-    lv+=`<div class="lv ${l===S.level?"cur":""}"><span>${l}. ${LEVELS_FR[l]}</span><span class="bar"><i style="width:${p||0}%"></i></span><span class="pct">${p===null?"–":p+" %"}</span></div>`}
+  let lv="";for(const l of ORDER){const h=S.hist[l]||[];const p=h.length?Math.round(h.reduce((a,b)=>a+b,0)/h.length*100):null;
+    lv+=`<div class="lv ${l===S.level?"cur":""}"><span>${LEVELS_FR[l]}</span><span class="bar"><i style="width:${p||0}%"></i></span><span class="pct">${p===null?"–":p+" %"}</span></div>`}
   $("levels").innerHTML=lv;
   const weak=Object.values(S.facts).filter(f=>f.wrong>0).sort((a,b)=>(b.wrong-b.box)-(a.wrong-a.box)).slice(0,12);
   $("weak").innerHTML=weak.length?weak.map(f=>{const t=f.t;const txt=t.miss?`${t.a} + ? = 10`:`${t.a} ${t.op==="+"?"+":"−"} ${t.b}`;
     return `<span title="${f.wrong} erreur(s)">${txt} = ${t.ans} · ${f.wrong}×</span>`}).join(""):`<span class="muted" style="background:none">Rien pour l'instant.</span>`;
   $("pName").value=S.name;
-  $("pLevel").innerHTML=LEVELS_FR.slice(1).map((n,i)=>`<option value="${i+1}" ${i+1===S.level?"selected":""}>${i+1}. ${n}</option>`).join("");
+  $("pLevel").innerHTML=ORDER.map(l=>`<option value="${l}" ${l===S.level?"selected":""}>0-${rangeOf(l)} : ${LEVELS_FR[l]}</option>`).join("");
   $("pLen").value=String(S.len);
   $("pResetConfirm").hidden=true;$("pReset").hidden=false;
 }
 
 /* ---------- Verdrahtung ---------- */
 renderKeypad();
+document.querySelectorAll(".range").forEach(b=>b.onclick=()=>{audio();setRange(+b.dataset.r);renderHome()});
 $("go").onclick=()=>{audio();startTrain()};
 $("blitz").onclick=()=>{audio();startBlitz()};
 $("quit").onclick=quit;
@@ -631,7 +655,7 @@ $("gateOk").onclick=tryGate;
 $("gateIn").addEventListener("keydown",e=>{if(e.key==="Enter")tryGate()});
 $("pBack").onclick=()=>{renderHome();show("home")};
 $("pName").onchange=e=>{S.name=e.target.value.trim();save()};
-$("pLevel").onchange=e=>{S.level=+e.target.value;save();renderParent()};
+$("pLevel").onchange=e=>{S.level=+e.target.value;S.range=rangeOf(S.level);S.lvByRange[S.range]=S.level;save();renderParent()};
 $("pLen").onchange=e=>{S.len=+e.target.value;save()};
 $("pReset").onclick=()=>{$("pReset").hidden=true;$("pResetConfirm").hidden=false};
 $("pResetNo").onclick=()=>{$("pReset").hidden=false;$("pResetConfirm").hidden=true};
